@@ -5,20 +5,27 @@ import zipfile
 import mimetypes
 
 def lambda_handler(event, context):
-    s3 = boto3.resource('s3')
+    sns = boto3.resource('sns')
+    topic = sns.Topic('arn:aws:sns:us-east-1:885622517920:deploySandboxTopic')
 
-    sandboxBucket = s3.Bucket('sandbox.thewinleague.com')
-    buildBucket = s3.Bucket('sandbox-build.thewinleague.com')
+    try:
+        s3 = boto3.resource('s3')
 
-    sandboxZip = io.BytesIO()
-    buildBucket.download_fileobj('sandboxbuild.zip', sandboxZip)
+        sandboxBucket = s3.Bucket('sandbox.thewinleague.com')
+        buildBucket = s3.Bucket('sandbox-build.thewinleague.com')
 
-    with zipfile.ZipFile(sandboxZip) as myZip:
-        for nm in myZip.namelist():
-            obj = myZip.open(nm)
-            sandboxBucket.upload_fileobj(obj,nm,
-                ExtraArgs={'ContentType': mimetypes.guess_type(nm)[0]})
-            sandboxBucket.Object(nm).Acl().put(ACL='public-read')
+        sandboxZip = io.BytesIO()
+        buildBucket.download_fileobj('sandboxbuild.zip', sandboxZip)
 
-    print ("Build job done")
-    return 'Hello from Lambda'
+        with zipfile.ZipFile(sandboxZip) as myZip:
+            for nm in myZip.namelist():
+                obj = myZip.open(nm)
+                sandboxBucket.upload_fileobj(obj,nm,
+                    ExtraArgs={'ContentType': mimetypes.guess_type(nm)[0]})
+                sandboxBucket.Object(nm).Acl().put(ACL='public-read')
+
+        print ("Build job done")
+        topic.publish(Subject="Successful deployment", Message="Sandbox build deployed succesfully")
+    except:
+        topic.publish(Subject="Failed deployment", Message="Sandbox build failed")
+        raise
